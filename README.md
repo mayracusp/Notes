@@ -6,8 +6,9 @@ A modern web application for dental practices to manage patient records and crea
 
 - **Patient Management**: Add, view, and search patient records
 - **Clinical Notes**: Create and manage clinical notes for each patient
-- **AI Voice Transcription**: Record audio notes and automatically transcribe them using OpenAI's Whisper API
+- **AI Clinical Documentation**: Record audio notes and automatically generate structured clinical documentation using AWS HealthScribe
 - **Real-time Recording**: Built-in audio recorder with live recording feedback
+- **HIPAA-Eligible**: Uses AWS HealthScribe, a HIPAA-eligible service designed for healthcare
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 - **Modern UI**: Clean, professional interface built with Tailwind CSS
 
@@ -15,7 +16,8 @@ A modern web application for dental practices to manage patient records and crea
 
 - **Framework**: Next.js 14 with TypeScript
 - **Styling**: Tailwind CSS
-- **AI Transcription**: OpenAI Whisper API
+- **AI Clinical Documentation**: AWS HealthScribe (HIPAA-eligible)
+- **Cloud Storage**: Amazon S3
 - **Data Storage**: JSON file-based storage (easily upgradeable to a database)
 - **Audio Recording**: Browser MediaRecorder API
 
@@ -23,7 +25,10 @@ A modern web application for dental practices to manage patient records and crea
 
 - Node.js 18+ installed
 - npm or yarn package manager
-- OpenAI API key (for transcription feature)
+- AWS Account with HealthScribe access
+- AWS credentials (Access Key ID and Secret Access Key)
+- Two S3 buckets (for audio input and HealthScribe output)
+- IAM role with appropriate permissions
 
 ## Installation
 
@@ -38,17 +43,97 @@ cd Notes
 npm install
 ```
 
-3. Set up environment variables:
+3. Set up AWS Resources:
+
+### Step 3.1: Create S3 Buckets
+
+Create two S3 buckets in the **us-east-1** region (required for HealthScribe):
+
+```bash
+# Bucket for audio uploads
+aws s3 mb s3://your-healthscribe-audio-bucket --region us-east-1
+
+# Bucket for HealthScribe output
+aws s3 mb s3://your-healthscribe-output-bucket --region us-east-1
+```
+
+### Step 3.2: Create IAM Role for HealthScribe
+
+Create an IAM role with the following permissions:
+
+1. Go to AWS IAM Console
+2. Create a new role with the following trust policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "transcribe.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+3. Attach the following inline policy (replace bucket names):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::your-healthscribe-audio-bucket",
+        "arn:aws:s3:::your-healthscribe-audio-bucket/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::your-healthscribe-output-bucket/*"
+      ]
+    }
+  ]
+}
+```
+
+4. Copy the Role ARN (you'll need this for the `.env.local` file)
+
+### Step 3.3: Create AWS Access Keys
+
+1. Go to AWS IAM Console
+2. Create a new user or use an existing user
+3. Attach the following policies:
+   - `AmazonS3FullAccess` (or a custom policy with S3 permissions)
+   - `AmazonTranscribeFullAccess`
+4. Create access keys and save them securely
+
+4. Set up environment variables:
 ```bash
 cp .env.example .env.local
 ```
 
-4. Edit `.env.local` and add your OpenAI API key:
+5. Edit `.env.local` and add your AWS credentials:
 ```
-OPENAI_API_KEY=your_actual_api_key_here
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_NAME=your-healthscribe-audio-bucket
+AWS_S3_OUTPUT_BUCKET=your-healthscribe-output-bucket
+AWS_HEALTHSCRIBE_DATA_ACCESS_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
 ```
-
-Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 
 ## Running the Application
 
@@ -99,15 +184,19 @@ http://localhost:3000
 
 ## Features in Detail
 
-### AI Voice Transcription
+### AI Clinical Documentation with AWS HealthScribe
 
-The application uses OpenAI's Whisper model for highly accurate medical transcription:
+The application uses AWS HealthScribe, a HIPAA-eligible service specifically designed for healthcare:
 
-- Records audio directly in the browser
-- Supports various audio formats
-- Transcribes medical and dental terminology accurately
-- Handles multiple recording sessions per note
-- Shows real-time recording status and timer
+- **Records audio directly in the browser**
+- **Generates structured clinical documentation** (not just transcription)
+- **Identifies speaker roles** (clinician vs. patient)
+- **Extracts medical entities** and terminology accurately
+- **Creates preliminary clinical notes** with sections like Chief Complaint, History of Present Illness, and Assessment
+- **HIPAA-eligible** for healthcare data compliance
+- **Handles multiple recording sessions** per note
+- **Shows real-time recording status** and processing feedback
+- **Processing time**: Typically 1-2 minutes for clinical documentation generation
 
 ### Data Storage
 
@@ -141,7 +230,12 @@ npm start
 Ensure the following environment variables are set:
 
 ```
-OPENAI_API_KEY=your_production_api_key
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_NAME=your-healthscribe-audio-bucket
+AWS_S3_OUTPUT_BUCKET=your-healthscribe-output-bucket
+AWS_HEALTHSCRIBE_DATA_ACCESS_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
 ```
 
 ### Deployment Platforms
@@ -186,10 +280,14 @@ Potential improvements for production deployment:
 
 ### Transcription Errors
 
-- Verify OpenAI API key is correctly set
-- Check API key has sufficient credits
+- Verify AWS credentials are correctly set in `.env.local`
+- Ensure S3 buckets exist and are in us-east-1 region
+- Check IAM role ARN is correct and has proper permissions
+- Verify AWS account has access to HealthScribe (available in us-east-1)
 - Ensure audio recording is clear and audible
 - Check network connectivity
+- Review AWS CloudWatch logs for detailed error messages
+- Note: HealthScribe processing takes 1-2 minutes - be patient!
 
 ### Build Errors
 
@@ -209,6 +307,8 @@ MIT License - feel free to use this for your dental practice or modify as needed
 
 Built with:
 - Next.js
-- OpenAI Whisper API
+- AWS HealthScribe
+- Amazon S3
+- AWS SDK for JavaScript
 - Tailwind CSS
 - TypeScript
