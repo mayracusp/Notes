@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClinicalNotes, createClinicalNote, getClinicalNotesByPatient } from '@/lib/storage';
+import { getClinicalNotes, createClinicalNote, getClinicalNotesByPatient, getPatient } from '@/lib/storage';
 import { generateId } from '@/lib/utils';
 import { ClinicalNote, CreateClinicalNoteInput } from '@/types';
+import { syncClinicalNoteToHeyDonto } from '@/lib/heydonto-sync';
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +33,21 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
+    // Create note locally
     const note = await createClinicalNote(newNote);
+
+    // Sync to HeyDonto if enabled (async, non-blocking)
+    // Get patient data for HeyDonto sync
+    getPatient(note.patientId)
+      .then((patient) => {
+        if (patient) {
+          return syncClinicalNoteToHeyDonto(note, patient);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to sync clinical note to HeyDonto:', error);
+      });
+
     return NextResponse.json(note, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to create clinical note' }, { status: 500 });
