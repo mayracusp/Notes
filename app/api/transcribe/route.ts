@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { transcribeWithHealthScribe } from '@/lib/healthscribe';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,27 +10,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
-    // Check if OpenAI API key is configured
-    const apiKey = process.env.OPENAI_API_KEY;
+    // Check if AWS credentials are configured
+    const awsAccessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const awsSecretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    const awsS3Bucket = process.env.AWS_S3_BUCKET_NAME;
+    const awsOutputBucket = process.env.AWS_S3_OUTPUT_BUCKET;
+    const awsRoleArn = process.env.AWS_HEALTHSCRIBE_DATA_ACCESS_ROLE_ARN;
 
-    if (!apiKey) {
+    if (!awsAccessKeyId || !awsSecretAccessKey || !awsS3Bucket || !awsOutputBucket || !awsRoleArn) {
       return NextResponse.json(
-        { error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file.' },
+        {
+          error: 'AWS credentials not configured. Please add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME, AWS_S3_OUTPUT_BUCKET, and AWS_HEALTHSCRIBE_DATA_ACCESS_ROLE_ARN to your .env.local file.'
+        },
         { status: 500 }
       );
     }
 
-    const openai = new OpenAI({ apiKey });
+    // Convert file to buffer
+    const arrayBuffer = await audioFile.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    // Transcribe the audio using OpenAI Whisper
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
-      language: 'en',
-      response_format: 'text',
-    });
+    // Transcribe the audio using AWS HealthScribe
+    const clinicalNotes = await transcribeWithHealthScribe(buffer, audioFile.name);
 
-    return NextResponse.json({ text: transcription });
+    return NextResponse.json({ text: clinicalNotes });
   } catch (error: any) {
     console.error('Transcription error:', error);
     return NextResponse.json(
